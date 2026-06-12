@@ -1,5 +1,7 @@
 # op-connect
 
+[![GitHub stars](https://img.shields.io/github/stars/simeondahl/op-connect?style=social)](https://github.com/simeondahl/op-connect/stargazers)
+
 A small CLI that connects to SSH and RDP targets stored in [1Password](https://1password.com),
 using `op`, `ssh`, and `xfreerdp`.
 
