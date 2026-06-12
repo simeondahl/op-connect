@@ -62,7 +62,7 @@ tag `rdp`.
 
 ## Notes
 
-- The RDP password (if set) is passed to `xfreerdp` as a command-line argument,
-  so it's briefly visible to other local users via `ps` on shared machines.
+- The RDP password (if set) is piped to `xfreerdp` via `/from-stdin:force`,
+  so it never appears in `ps`/`/proc` output or process-argument logs.
 - `~/.1password/agent.sock` is the default 1Password SSH agent socket path;
   override with `OP_SSH_AGENT_SOCK` if yours differs.

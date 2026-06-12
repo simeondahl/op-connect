@@ -159,13 +159,15 @@ cmd_rdp_by_id() {
   [[ -n "$scale_device" ]] && args+=(/scale-device:"$scale_device")
   [[ -n "$user" ]] && args+=(/u:"$user")
   [[ -n "$domain" ]] && args+=(/d:"$domain")
-  if [[ -n "$pass" ]]; then
-    args+=(/p:"$pass")
-    echo "Note: the RDP password is briefly visible in 'ps' output to other local users." >&2
-  fi
 
   echo "Connecting via RDP to ${user:+$user@}${host}:${port} ..."
-  xfreerdp "${args[@]}"
+  if [[ -n "$pass" ]]; then
+    args+=(/from-stdin:force)
+    printf '%s\n' "$pass" | xfreerdp "${args[@]}" \
+      2> >(grep -vE 'set_termianl_nonblock|tcgetattr|tcsetattr')
+  else
+    xfreerdp "${args[@]}"
+  fi
 }
 
 cmd_list() {
