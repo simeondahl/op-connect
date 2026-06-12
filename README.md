@@ -66,3 +66,8 @@ tag `rdp`.
   so it never appears in `ps`/`/proc` output or process-argument logs.
 - `~/.1password/agent.sock` is the default 1Password SSH agent socket path;
   override with `OP_SSH_AGENT_SOCK` if yours differs.
+- RDP connections use `/cert:tofu` (trust-on-first-use) by default: the
+  server certificate is pinned on first connect, and `xfreerdp` will warn if
+  it changes later (e.g. a MITM). If a target's certificate changes often
+  (e.g. after firmware updates on an iDRAC), set `OP_RDP_CERT_MODE=ignore` to
+  skip verification entirely for that session.

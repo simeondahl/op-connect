@@ -152,7 +152,8 @@ cmd_rdp_by_id() {
     scale_device=$scale
   fi
 
-  local args=(/v:"${host}:${port}" /cert:ignore +clipboard /dynamic-resolution)
+  local cert_mode="${OP_RDP_CERT_MODE:-tofu}"
+  local args=(/v:"${host}:${port}" /cert:"$cert_mode" +clipboard /dynamic-resolution)
   [[ -n "$res" ]] && args+=(/size:"$res")
   [[ -n "$scale" ]] && args+=(/scale:"$scale")
   [[ -n "$scale_pct" ]] && args+=(/scale-desktop:"$scale_pct")
