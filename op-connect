@@ -1,0 +1,224 @@
+#!/usr/bin/env bash
+# Connect to SSH or RDP targets stored as 1Password items.
+#
+# Tagging convention (set these tags on items in 1Password):
+# Any SSH_KEY item with a "url" field formatted as ssh://user@host[:port] is
+# usable directly (no tagging needed). Authentication uses the 1Password SSH
+# agent, so the private key never touches disk.
+#
+# For RDP, tag the item "rdp" in 1Password:
+#   "rdp"  - LOGIN item with a primary URL formatted as rdp://user@host[:port]
+#            and optionally a PASSWORD field.
+set -euo pipefail
+
+OP_SSH_AGENT_SOCK="${OP_SSH_AGENT_SOCK:-$HOME/.1password/agent.sock}"
+
+require() {
+  command -v "$1" >/dev/null 2>&1 || { echo "Missing dependency: $1" >&2; exit 1; }
+}
+require op
+require jq
+require fzf
+
+# list_candidates <mode> -> prints item list as id\ttitle\tvault JSON-line-by-line
+list_candidates() {
+  local mode="$1"
+  if [[ "$mode" == "ssh" ]]; then
+    op item list --format=json | jq -r '.[] | select(.category=="SSH_KEY")'
+  else
+    op item list --tags "$mode" --format=json | jq -r '.[]'
+  fi
+}
+
+# common fzf styling
+FZF_STYLE=(--ansi --layout=reverse --border=rounded --height=60%
+           --color=header:italic:dim,prompt:bright-cyan,pointer:bright-cyan)
+
+# format_rows <mode-color> -> reads id\ttitle\tvault on stdin, prints colored rows
+format_rows() {
+  local color="$1" tag="$2"
+  while IFS=$'\t' read -r id title vault; do
+    printf '%s\t\033[1;%sm%-4s\033[0m  %-40s \033[2m%s\033[0m\n' "$id" "$color" "$tag" "$title" "$vault"
+  done
+}
+
+# pick_item <mode> -> prints selected item id (mode: "ssh" or a tag like "rdp")
+pick_item() {
+  local mode="$1" color tag selection
+  if [[ "$mode" == "ssh" ]]; then color=32; tag="SSH"; else color=34; tag="RDP"; fi
+  selection=$(list_candidates "$mode" \
+    | jq -rs '.[] | "\(.id)\t\(.title)\t\(.vault.name)"' \
+    | format_rows "$color" "$tag" \
+    | fzf "${FZF_STYLE[@]}" --with-nth=2.. --delimiter='\t' \
+        --header="  $mode targets" --prompt='Connect > ')
+  [[ -z "$selection" ]] && return 1
+  cut -f1 <<<"$selection"
+}
+
+# find_item_by_title <mode> <title> -> prints item id
+find_item_by_title() {
+  local mode="$1" title="$2"
+  list_candidates "$mode" \
+    | jq -rs --arg t "$title" 'map(select(.title == $t)) | .[0].id // empty'
+}
+
+# parse_uri <uri> <default_port> -> prints "user\thost\tport"
+parse_uri() {
+  local uri="$1" default_port="$2" rest user host port
+  rest="${uri#*://}"
+  if [[ "$rest" == *@* ]]; then
+    user="${rest%%@*}"
+    rest="${rest#*@}"
+  else
+    user=""
+  fi
+  if [[ "$rest" == *:* ]]; then
+    host="${rest%%:*}"
+    port="${rest#*:}"
+  else
+    host="$rest"
+    port="$default_port"
+  fi
+  printf '%s\t%s\t%s\n' "$user" "$host" "$port"
+}
+
+cmd_ssh() {
+  local id
+  if [[ $# -ge 1 ]]; then
+    id=$(find_item_by_title ssh "$1")
+    [[ -z "$id" ]] && { echo "No ssh-tagged item titled '$1'" >&2; exit 1; }
+  else
+    id=$(pick_item ssh) || { echo "No item selected" >&2; exit 1; }
+  fi
+  cmd_ssh_by_id "$id"
+}
+
+cmd_ssh_by_id() {
+  local id="$1"
+  local json url user host port
+  json=$(op item get "$id" --format=json)
+  url=$(jq -r '(.urls[0].href // (.fields[]? | select(.label=="url") | .value)) // empty' <<<"$json")
+  [[ -z "$url" ]] && { echo "Item has no ssh:// url" >&2; exit 1; }
+
+  IFS=$'\t' read -r user host port < <(parse_uri "$url" 22)
+  [[ -z "$host" ]] && { echo "Could not parse host from $url" >&2; exit 1; }
+
+  [[ ! -S "$OP_SSH_AGENT_SOCK" ]] && { echo "1Password SSH agent socket not found at $OP_SSH_AGENT_SOCK" >&2; exit 1; }
+
+  echo "Connecting to ${user:+$user@}${host} (port $port) via 1Password SSH agent..."
+  exec ssh -o IdentityAgent="$OP_SSH_AGENT_SOCK" -o IdentitiesOnly=yes -p "$port" "${user:+$user}@${host}"
+}
+
+cmd_rdp() {
+  local id
+  if [[ $# -ge 1 ]]; then
+    id=$(find_item_by_title rdp "$1")
+    [[ -z "$id" ]] && { echo "No rdp-tagged item titled '$1'" >&2; exit 1; }
+  else
+    id=$(pick_item rdp) || { echo "No item selected" >&2; exit 1; }
+  fi
+  cmd_rdp_by_id "$id"
+}
+
+cmd_rdp_by_id() {
+  local id="$1"
+  local json url user host port pass domain field_user
+  json=$(op item get "$id" --format=json --reveal)
+  url=$(jq -r '.urls[0].href // empty' <<<"$json")
+  [[ -z "$url" ]] && { echo "Item has no rdp:// url" >&2; exit 1; }
+
+  IFS=$'\t' read -r user host port < <(parse_uri "$url" 3389)
+  [[ -z "$host" ]] && { echo "Could not parse host from $url" >&2; exit 1; }
+
+  pass=$(jq -r '.fields[]? | select(.purpose=="PASSWORD") | .value // empty' <<<"$json")
+  domain=$(jq -r '.fields[]? | select(.label=="domain") | .value // empty' <<<"$json")
+  field_user=$(jq -r '.fields[]? | select(.purpose=="USERNAME") | .value // empty' <<<"$json")
+  [[ -n "$field_user" ]] && user="$field_user"
+
+  local res screen_line res_w mm_w scale_pct scale scale_device
+  res=$(xdpyinfo 2>/dev/null | awk '/dimensions/ {print $2}')
+  screen_line=$(xrandr 2>/dev/null | grep ' connected' | head -1)
+  res_w=$(grep -oP '\d+(?=x\d+\+)' <<<"$screen_line" | head -1)
+  mm_w=$(grep -oP '\d+(?=mm x \d+mm)' <<<"$screen_line" | head -1)
+  if [[ -n "$res_w" && -n "$mm_w" && "$mm_w" -gt 0 ]]; then
+    # scale_pct = (real DPI / 96) * 100, clamped to xfreerdp's allowed ranges
+    scale_pct=$(awk -v px="$res_w" -v mm="$mm_w" 'BEGIN { printf "%d", (px * 25.4 / mm) / 96 * 100 }')
+    (( scale_pct < 100 )) && scale_pct=100
+    (( scale_pct > 500 )) && scale_pct=500
+    if (( scale_pct >= 180 )); then scale=180
+    elif (( scale_pct >= 140 )); then scale=140
+    else scale=100
+    fi
+    scale_device=$scale
+  fi
+
+  local args=(/v:"${host}:${port}" /cert:ignore +clipboard /dynamic-resolution)
+  [[ -n "$res" ]] && args+=(/size:"$res")
+  [[ -n "$scale" ]] && args+=(/scale:"$scale")
+  [[ -n "$scale_pct" ]] && args+=(/scale-desktop:"$scale_pct")
+  [[ -n "$scale_device" ]] && args+=(/scale-device:"$scale_device")
+  [[ -n "$user" ]] && args+=(/u:"$user")
+  [[ -n "$domain" ]] && args+=(/d:"$domain")
+  if [[ -n "$pass" ]]; then
+    args+=(/p:"$pass")
+    echo "Note: the RDP password is briefly visible in 'ps' output to other local users." >&2
+  fi
+
+  echo "Connecting via RDP to ${user:+$user@}${host}:${port} ..."
+  xfreerdp "${args[@]}"
+}
+
+cmd_list() {
+  op item list --format=json \
+    | jq -r '.[] | "\(.title)\t\(.category)\t\(.vault.name)\t\(.tags // [] | join(","))"' \
+    | { printf 'TITLE\tCATEGORY\tVAULT\tTAGS\n'; cat; } \
+    | column -t -s $'\t'
+}
+
+usage() {
+  cat <<'EOF'
+Usage: op-connect [ssh|rdp|list] [item-title]
+
+  (no args)    Show a combined fzf picker across all SSH and RDP items
+               and connect to whichever is selected.
+
+  ssh [name]   Connect via SSH using a 1Password SSH_KEY item with a "url"
+               field formatted as ssh://user@host[:port]. Auth is handled
+               by the 1Password SSH agent. Picks interactively (fzf) if
+               no name is given.
+
+  rdp [name]   Connect via RDP (xfreerdp) using a 1Password item
+               tagged "rdp". Item must have a primary URL formatted
+               as rdp://user@host[:port], and optionally a password
+               field. Picks interactively (fzf) if no name is given.
+
+  list         List all items with category/vault/tags, to help with tagging.
+EOF
+}
+
+cmd_pick() {
+  local selection mode id
+  selection=$(
+    { list_candidates ssh | jq -rs '.[] | "\(.id)\t\(.title)\t\(.vault.name)"' | format_rows 32 SSH | sed 's/^/ssh\t/'
+      list_candidates rdp | jq -rs '.[] | "\(.id)\t\(.title)\t\(.vault.name)"' | format_rows 34 RDP | sed 's/^/rdp\t/'
+    } | fzf "${FZF_STYLE[@]}" --with-nth=3.. --delimiter='\t' \
+        --header="  All SSH & RDP targets" --prompt='Connect > '
+  )
+  [[ -z "$selection" ]] && { echo "No item selected" >&2; exit 1; }
+  mode=$(cut -f1 <<<"$selection")
+  id=$(cut -f2 <<<"$selection")
+  if [[ "$mode" == "ssh" ]]; then
+    cmd_ssh_by_id "$id"
+  else
+    cmd_rdp_by_id "$id"
+  fi
+}
+
+case "${1:-}" in
+  ssh) shift; cmd_ssh "$@" ;;
+  rdp) shift; cmd_rdp "$@" ;;
+  list) cmd_list ;;
+  -h|--help) usage ;;
+  "") cmd_pick ;;
+  *) usage; exit 1 ;;
+esac
