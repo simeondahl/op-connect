@@ -75,3 +75,6 @@ tag `rdp`.
   it changes later (e.g. a MITM). If a target's certificate changes often
   (e.g. after firmware updates on an iDRAC), set `OP_RDP_CERT_MODE=ignore` to
   skip verification entirely for that session.
+- The 1Password item list is fetched once per session and reused across
+  picker loop iterations, so reopening the menu after a connection closes
+  doesn't re-query 1Password.
