@@ -85,4 +85,7 @@ tag `rdp`.
   trusted network.
 - **The 1Password item list is cached in memory only**, for the lifetime of
   a single `op-connect` invocation (including picker loop iterations). It is
-  never written to disk and is discarded when the process exits.
+  never written to disk and is discarded when the process exits. This cache
+  only contains metadata from `op item list` (id, title, vault, category,
+  tags) — no passwords, private keys, or other field values. Those are only
+  fetched (via `op item get`) for the single item you select to connect to.
