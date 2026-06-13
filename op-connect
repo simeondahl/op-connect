@@ -34,9 +34,9 @@ list_candidates() {
   local mode="$1"
   load_items
   if [[ "$mode" == "ssh" ]]; then
-    jq -r '.[] | select(.category=="SSH_KEY")' <<<"$ALL_ITEMS_JSON"
+    jq -r '[.[] | select(.category=="SSH_KEY")] | sort_by(.title) | .[]' <<<"$ALL_ITEMS_JSON"
   else
-    jq -r --arg t "$mode" '.[] | select(.tags // [] | index($t))' <<<"$ALL_ITEMS_JSON"
+    jq -r --arg t "$mode" '[.[] | select(.tags // [] | index($t))] | sort_by(.title) | .[]' <<<"$ALL_ITEMS_JSON"
   fi
 }
 
@@ -187,7 +187,7 @@ cmd_rdp_by_id() {
 
 cmd_list() {
   op item list --format=json \
-    | jq -r '.[] | "\(.title)\t\(.category)\t\(.vault.name)\t\(.tags // [] | join(","))"' \
+    | jq -r 'sort_by(.title) | .[] | "\(.title)\t\(.category)\t\(.vault.name)\t\(.tags // [] | join(","))"' \
     | { printf 'TITLE\tCATEGORY\tVAULT\tTAGS\n'; cat; } \
     | column -t -s $'\t'
 }
