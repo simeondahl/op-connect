@@ -34,14 +34,14 @@ using `op`, `ssh`, and `xfreerdp`.
 mkdir -p ~/bin
 cp op-connect ~/bin/
 chmod +x ~/bin/op-connect
-ln -sf op-connect ~/bin/opc
 ```
 
 Make sure `~/bin` is on your `PATH` (e.g. add `export PATH="$HOME/bin:$PATH"` to
 `~/.bashrc`).
 
-The `opc` symlink is a short alias — `opc`, `opc ssh plex`, and `opc rdp` all
-work the same as `op-connect`.
+> **Note:** `opc` is reserved as an alias for [op-connect-rs](https://github.com/simeondahl/op-connect-rs),
+> the Rust port. If you want a short alias for this bash version instead, use
+> something like `ln -sf op-connect ~/bin/opcb`.
 
 ## Usage
 
