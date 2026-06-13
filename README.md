@@ -51,6 +51,10 @@ op-connect rdp "ODIN - Remote Desktop"
 op-connect list       # list all 1Password items with category/vault/tags
 ```
 
+When using a picker (`op-connect`, `op-connect ssh`, or `op-connect rdp` with
+no name), the menu reappears after a connection closes — press `Esc` to exit
+back to your shell.
+
 ## Setting up items in 1Password
 
 **SSH**: any item of category "SSH Key" with a `url` field (or primary URL) set
