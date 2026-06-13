@@ -87,10 +87,12 @@ cmd_ssh() {
   if [[ $# -ge 1 ]]; then
     id=$(find_item_by_title ssh "$1")
     [[ -z "$id" ]] && { echo "No ssh-tagged item titled '$1'" >&2; exit 1; }
-  else
-    id=$(pick_item ssh) || { echo "No item selected" >&2; exit 1; }
+    cmd_ssh_by_id "$id"
+    return
   fi
-  cmd_ssh_by_id "$id"
+  while id=$(pick_item ssh); do
+    cmd_ssh_by_id "$id"
+  done
 }
 
 cmd_ssh_by_id() {
@@ -106,7 +108,7 @@ cmd_ssh_by_id() {
   [[ ! -S "$OP_SSH_AGENT_SOCK" ]] && { echo "1Password SSH agent socket not found at $OP_SSH_AGENT_SOCK" >&2; exit 1; }
 
   echo "Connecting to ${user:+$user@}${host} (port $port) via 1Password SSH agent..."
-  exec ssh -o IdentityAgent="$OP_SSH_AGENT_SOCK" -o IdentitiesOnly=yes -p "$port" "${user:+$user}@${host}"
+  ssh -o IdentityAgent="$OP_SSH_AGENT_SOCK" -o IdentitiesOnly=yes -p "$port" "${user:+$user}@${host}" || true
 }
 
 cmd_rdp() {
@@ -114,10 +116,12 @@ cmd_rdp() {
   if [[ $# -ge 1 ]]; then
     id=$(find_item_by_title rdp "$1")
     [[ -z "$id" ]] && { echo "No rdp-tagged item titled '$1'" >&2; exit 1; }
-  else
-    id=$(pick_item rdp) || { echo "No item selected" >&2; exit 1; }
+    cmd_rdp_by_id "$id"
+    return
   fi
-  cmd_rdp_by_id "$id"
+  while id=$(pick_item rdp); do
+    cmd_rdp_by_id "$id"
+  done
 }
 
 cmd_rdp_by_id() {
@@ -165,9 +169,9 @@ cmd_rdp_by_id() {
   if [[ -n "$pass" ]]; then
     args+=(/from-stdin:force)
     printf '%s\n' "$pass" | xfreerdp "${args[@]}" \
-      2> >(grep -vE 'set_termianl_nonblock|tcgetattr|tcsetattr')
+      2> >(grep -vE 'set_termianl_nonblock|tcgetattr|tcsetattr') || true
   else
-    xfreerdp "${args[@]}"
+    xfreerdp "${args[@]}" || true
   fi
 }
 
@@ -201,20 +205,20 @@ EOF
 
 cmd_pick() {
   local selection mode id
-  selection=$(
+  while selection=$(
     { list_candidates ssh | jq -rs '.[] | "\(.id)\t\(.title)\t\(.vault.name)"' | format_rows 32 SSH | sed 's/^/ssh\t/'
       list_candidates rdp | jq -rs '.[] | "\(.id)\t\(.title)\t\(.vault.name)"' | format_rows 34 RDP | sed 's/^/rdp\t/'
     } | fzf "${FZF_STYLE[@]}" --with-nth=3.. --delimiter='\t' \
         --header="  All SSH & RDP targets" --prompt='Connect > '
-  )
-  [[ -z "$selection" ]] && { echo "No item selected" >&2; exit 1; }
-  mode=$(cut -f1 <<<"$selection")
-  id=$(cut -f2 <<<"$selection")
-  if [[ "$mode" == "ssh" ]]; then
-    cmd_ssh_by_id "$id"
-  else
-    cmd_rdp_by_id "$id"
-  fi
+  ) && [[ -n "$selection" ]]; do
+    mode=$(cut -f1 <<<"$selection")
+    id=$(cut -f2 <<<"$selection")
+    if [[ "$mode" == "ssh" ]]; then
+      cmd_ssh_by_id "$id"
+    else
+      cmd_rdp_by_id "$id"
+    fi
+  done
 }
 
 case "${1:-}" in
