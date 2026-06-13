@@ -148,6 +148,7 @@ cmd_rdp_by_id() {
   domain=$(jq -r '.fields[]? | select(.label=="domain") | .value // empty' <<<"$json")
   field_user=$(jq -r '.fields[]? | select(.purpose=="USERNAME") | .value // empty' <<<"$json")
   [[ -n "$field_user" ]] && user="$field_user"
+  unset json
 
   local res screen_line res_w mm_w scale_pct scale scale_device
   res=$(xdpyinfo 2>/dev/null | awk '/dimensions/ {print $2}')
@@ -183,6 +184,7 @@ cmd_rdp_by_id() {
   else
     xfreerdp "${args[@]}" || true
   fi
+  unset pass
 }
 
 cmd_list() {

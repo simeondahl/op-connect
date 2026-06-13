@@ -77,6 +77,13 @@ tag `rdp`.
 - **RDP passwords are passed via stdin**, not argv or environment variables,
   using `xfreerdp /from-stdin:force` — so they never appear in `ps`,
   `/proc/*/cmdline`, or process-argument logs.
+- **Revealed item data has a minimal lifetime.** The decrypted JSON from
+  `op item get --reveal` (which includes the RDP password) is held in a
+  `local` shell variable and explicitly `unset` as soon as the needed fields
+  are extracted; the password itself is `unset` once the RDP session ends.
+  Note: bash cannot guarantee secrets are zeroed from process memory —
+  `unset` drops the reference but doesn't securely wipe the underlying
+  bytes. This minimizes, but doesn't eliminate, the exposure window.
 - **RDP certificates use `/cert:tofu`** (trust-on-first-use) by default: the
   server certificate is pinned on first connect, and `xfreerdp` warns if it
   changes later (e.g. a MITM). If a target's certificate changes often (e.g.
