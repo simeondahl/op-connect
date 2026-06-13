@@ -20,13 +20,23 @@ require op
 require jq
 require fzf
 
+# Cache `op item list` for the lifetime of this invocation, so picker loops
+# (which call list_candidates repeatedly) don't re-fetch from 1Password
+# on every iteration.
+ALL_ITEMS_JSON=""
+load_items() {
+  [[ -n "$ALL_ITEMS_JSON" ]] && return
+  ALL_ITEMS_JSON=$(op item list --format=json)
+}
+
 # list_candidates <mode> -> prints item list as id\ttitle\tvault JSON-line-by-line
 list_candidates() {
   local mode="$1"
+  load_items
   if [[ "$mode" == "ssh" ]]; then
-    op item list --format=json | jq -r '.[] | select(.category=="SSH_KEY")'
+    jq -r '.[] | select(.category=="SSH_KEY")' <<<"$ALL_ITEMS_JSON"
   else
-    op item list --tags "$mode" --format=json | jq -r '.[]'
+    jq -r --arg t "$mode" '.[] | select(.tags // [] | index($t))' <<<"$ALL_ITEMS_JSON"
   fi
 }
 
