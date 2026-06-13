@@ -65,17 +65,24 @@ to `ssh://user@host[:port]` is picked up automatically — no tagging needed.
 `rdp://user@host[:port]`, optionally fill in the password field, and add the
 tag `rdp`.
 
-## Notes
+## Security
 
-- The RDP password (if set) is piped to `xfreerdp` via `/from-stdin:force`,
-  so it never appears in `ps`/`/proc` output or process-argument logs.
-- `~/.1password/agent.sock` is the default 1Password SSH agent socket path;
-  override with `OP_SSH_AGENT_SOCK` if yours differs.
-- RDP connections use `/cert:tofu` (trust-on-first-use) by default: the
-  server certificate is pinned on first connect, and `xfreerdp` will warn if
-  it changes later (e.g. a MITM). If a target's certificate changes often
-  (e.g. after firmware updates on an iDRAC), set `OP_RDP_CERT_MODE=ignore` to
-  skip verification entirely for that session.
-- The 1Password item list is fetched once per session and reused across
-  picker loop iterations, so reopening the menu after a connection closes
-  doesn't re-query 1Password.
+- **No credentials are stored by op-connect.** It calls the `op` CLI for
+  every lookup and relies entirely on the 1Password desktop app integration
+  for authentication — there's no separate sign-in, token, or cache file on
+  disk.
+- **SSH private keys never touch disk.** Authentication goes through the
+  1Password SSH agent (`~/.1password/agent.sock` by default, override with
+  `OP_SSH_AGENT_SOCK`); `op-connect` never reads or copies key material.
+- **RDP passwords are passed via stdin**, not argv or environment variables,
+  using `xfreerdp /from-stdin:force` — so they never appear in `ps`,
+  `/proc/*/cmdline`, or process-argument logs.
+- **RDP certificates use `/cert:tofu`** (trust-on-first-use) by default: the
+  server certificate is pinned on first connect, and `xfreerdp` warns if it
+  changes later (e.g. a MITM). If a target's certificate changes often (e.g.
+  after firmware updates on an iDRAC), set `OP_RDP_CERT_MODE=ignore` to skip
+  verification for that session — only use this for trusted targets on a
+  trusted network.
+- **The 1Password item list is cached in memory only**, for the lifetime of
+  a single `op-connect` invocation (including picker loop iterations). It is
+  never written to disk and is discarded when the process exits.
