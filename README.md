@@ -53,7 +53,8 @@ op-connect list       # list all 1Password items with category/vault/tags
 
 When using a picker (`op-connect`, `op-connect ssh`, or `op-connect rdp` with
 no name), the menu reappears after a connection closes — press `Esc` to exit
-back to your shell.
+back to your shell. For SSH sessions, `Ctrl-D` (or `exit`) closes the
+connection and returns you to the menu.
 
 ## Setting up items in 1Password
 
