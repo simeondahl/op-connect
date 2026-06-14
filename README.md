@@ -7,6 +7,9 @@ using `op`, `ssh`, and `xfreerdp`.
 
 > A Rust port with `zeroize`-based secret handling is also available:
 > [op-connect-rs](https://github.com/simeondahl/op-connect-rs).
+>
+> For browsing 1Password items as a hierarchical tree across many vaults, see
+> [op-tree](https://github.com/simeondahl/op-tree).
 
 - **SSH** targets are 1Password "SSH Key" items with a `url` field formatted as
   `ssh://user@host[:port]`. Authentication goes through the 1Password SSH agent,
